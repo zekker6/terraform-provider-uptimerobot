@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -58,6 +59,9 @@ type Monitor struct {
 	HTTPUsername string `json:"http_username"`
 	HTTPPassword string `json:"http_password"`
 
+	HTTPSuccessCodes []int
+	HTTPDownCodes    []int
+
 	CustomHTTPHeaders map[string]string
 }
 
@@ -66,6 +70,7 @@ func (client UptimeRobotApiClient) GetMonitor(id int) (m Monitor, err error) {
 	data.Add("monitors", fmt.Sprintf("%d", id))
 	// get custom http header
 	data.Add("custom_http_headers", fmt.Sprintf("%d", 1))
+	data.Add("custom_http_statuses", fmt.Sprintf("%d", 1))
 
 	body, err := client.MakeCall(
 		"getMonitors",
@@ -125,6 +130,19 @@ func (client UptimeRobotApiClient) GetMonitor(id int) (m Monitor, err error) {
 	}
 	m.CustomHTTPHeaders = customHTTPHeaders
 
+	for k, v := range monitor["custom_http_statuses"].(map[string]interface{}) {
+		codes := make([]int, 0)
+		for _, value := range v.([]interface{}) {
+			codes = append(codes, int(value.(float64)))
+		}
+		if k == "up" {
+			m.HTTPSuccessCodes = codes
+		}
+		if k == "down" {
+			m.HTTPDownCodes = codes
+		}
+	}
+
 	return
 }
 
@@ -151,6 +169,9 @@ type MonitorCreateRequest struct {
 	AlertContacts []MonitorRequestAlertContact
 
 	CustomHTTPHeaders map[string]string
+
+	HTTPSuccessCodes []int
+	HTTPDownCodes    []int
 }
 
 func (client UptimeRobotApiClient) CreateMonitor(req MonitorCreateRequest) (m Monitor, err error) {
@@ -190,6 +211,8 @@ func (client UptimeRobotApiClient) CreateMonitor(req MonitorCreateRequest) (m Mo
 		}
 	}
 
+	data.Add("custom_http_statuses", BuildCustomHttpStatusString(req.HTTPSuccessCodes, req.HTTPDownCodes))
+
 	body, err := client.MakeCall(
 		"newMonitor",
 		data.Encode(),
@@ -223,6 +246,8 @@ type MonitorUpdateRequest struct {
 	AlertContacts []MonitorRequestAlertContact
 
 	CustomHTTPHeaders map[string]string
+	HTTPSuccessCodes  []int
+	HTTPDownCodes     []int
 }
 
 func (client UptimeRobotApiClient) UpdateMonitor(req MonitorUpdateRequest) (m Monitor, err error) {
@@ -266,6 +291,8 @@ func (client UptimeRobotApiClient) UpdateMonitor(req MonitorUpdateRequest) (m Mo
 		data.Add("custom_http_headers", "{}")
 	}
 
+	data.Add("custom_http_statuses", BuildCustomHttpStatusString(req.HTTPSuccessCodes, req.HTTPDownCodes))
+
 	_, err = client.MakeCall(
 		"editMonitor",
 		data.Encode(),
@@ -289,4 +316,89 @@ func (client UptimeRobotApiClient) DeleteMonitor(id int) (err error) {
 		return
 	}
 	return
+}
+
+/**
+Parses string representation of custom http statuses from UR
+Example:
+s := "404:0_200:1"
+ParseCustomHttpStatuses(s)
+
+Saves:
+	[]int{
+		200
+	}
+	[]int{
+		400
+	}
+*/
+func ParseCustomHttpStatuses(rules string) (error, []int, []int) {
+	rulesList := strings.Split(rules, "_")
+
+	if len(rulesList) == 0 {
+		return nil, []int{}, []int{}
+	}
+
+	successCodes := make([]int, 0)
+	errorCodes := make([]int, 0)
+
+	for _, rule := range rulesList {
+		if rule == "" {
+			continue
+		}
+
+		ruleParts := strings.Split(rule, ":")
+		if len(ruleParts) != 2 {
+			return errors.New(fmt.Sprintf("Cannot parse rule: %s from rules: %s", rule, rules)), []int{}, []int{}
+		}
+
+		v, err := strconv.Atoi(ruleParts[0])
+		if err != nil {
+			return errors.New(fmt.Sprintf("Cant parse code: %s, rule: %s", ruleParts[0], rule)), []int{}, []int{}
+		}
+
+		switch ruleParts[1] {
+		case "0":
+			errorCodes = append(errorCodes, v)
+			break
+		case "1":
+			successCodes = append(successCodes, v)
+			break
+		default:
+			return errors.New(fmt.Sprintf("Invelid rule type: %s, rule: %s", ruleParts[1], rule)), []int{}, []int{}
+		}
+	}
+
+	return nil, successCodes, errorCodes
+}
+
+/**
+Builds string representation of custom http statuses for UR
+Example:
+
+Ok statuses:
+[]int{
+	200
+}
+
+Error statuses:
+[]int{
+	400
+}
+ParseCustomHttpStatuses(s)
+
+Returns:
+s := "404:0_200:1"
+*/
+func BuildCustomHttpStatusString(success, error []int) string {
+	items := make([]string, 0, len(success)+len(error))
+	for _, code := range success {
+		items = append(items, fmt.Sprintf("%d:1", code))
+	}
+
+	for _, code := range error {
+		items = append(items, fmt.Sprintf("%d:0", code))
+	}
+
+	return strings.Join(items, "_")
 }

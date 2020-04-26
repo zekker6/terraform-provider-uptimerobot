@@ -70,6 +70,20 @@ func resourceMonitor() *schema.Resource {
 				Optional:  true,
 				Sensitive: true,
 			},
+			"http_success_codes": {
+				Type:     schema.TypeList,
+				Optional: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeInt,
+				},
+			},
+			"http_down_codes": {
+				Type:     schema.TypeList,
+				Optional: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeInt,
+				},
+			},
 			"status": {
 				Type:     schema.TypeString,
 				Computed: true,
@@ -128,6 +142,16 @@ func resourceMonitorCreate(d *schema.ResourceData, m interface{}) error {
 		req.HTTPUsername = d.Get("http_username").(string)
 		req.HTTPPassword = d.Get("http_password").(string)
 		break
+	}
+
+	req.HTTPSuccessCodes = make([]int, len(d.Get("http_success_codes").([]interface{})))
+	for k, v := range d.Get("http_success_codes").([]interface{}) {
+		req.HTTPSuccessCodes[k] = v.(int)
+	}
+
+	req.HTTPDownCodes = make([]int, len(d.Get("http_down_codes").([]interface{})))
+	for k, v := range d.Get("http_down_codes").([]interface{}) {
+		req.HTTPDownCodes[k] = v.(int)
 	}
 
 	// Add optional attributes
@@ -217,6 +241,16 @@ func resourceMonitorUpdate(d *schema.ResourceData, m interface{}) error {
 		}
 	}
 
+	req.HTTPSuccessCodes = make([]int, len(d.Get("http_success_codes").([]interface{})))
+	for k, v := range d.Get("http_success_codes").([]interface{}) {
+		req.HTTPSuccessCodes[k] = v.(int)
+	}
+
+	req.HTTPDownCodes = make([]int, len(d.Get("http_down_codes").([]interface{})))
+	for k, v := range d.Get("http_down_codes").([]interface{}) {
+		req.HTTPDownCodes[k] = v.(int)
+	}
+
 	// custom_http_headers
 	httpHeaderMap := d.Get("custom_http_headers").(map[string]interface{})
 	req.CustomHTTPHeaders = make(map[string]string, len(httpHeaderMap))
@@ -263,4 +297,7 @@ func updateMonitorResource(d *schema.ResourceData, m uptimerobotapi.Monitor) {
 	d.Set("http_password", m.HTTPPassword)
 
 	d.Set("custom_http_headers", m.CustomHTTPHeaders)
+
+	d.Set("http_down_codes", m.HTTPDownCodes)
+	d.Set("http_success_codes", m.HTTPSuccessCodes)
 }

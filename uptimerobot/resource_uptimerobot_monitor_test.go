@@ -493,3 +493,41 @@ func testAccCheckMonitorDestroy(s *terraform.State) error {
 
 	return nil
 }
+
+func TestUptimeRobotDataResourceMonitor_custom_http_status_codes(t *testing.T) {
+	var FriendlyName = "TF Test:  custom http statuses"
+	var Type = "http"
+	var URL = "https://google.com"
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckMonitorDestroy,
+		Steps: []resource.TestStep{
+			resource.TestStep{
+				Config: fmt.Sprintf(`
+				resource "uptimerobot_monitor" "test" {
+					friendly_name = "%s"
+					type          = "%s"
+					url           = "%s"
+					http_success_codes = [200]
+					http_down_codes = [500]
+				}
+				`, FriendlyName, Type, URL),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "friendly_name", FriendlyName),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "type", Type),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "url", URL),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_down_codes.%", "1"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_down_codes.1", "500"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_success_codes.%", "1"),
+					resource.TestCheckResourceAttr("uptimerobot_monitor.test", "http_success_codes.1", "200"),
+				),
+			},
+			resource.TestStep{
+				ResourceName:      "uptimerobot_monitor.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
